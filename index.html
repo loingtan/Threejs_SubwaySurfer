@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Three.js Subway Surfer</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+      .game-ui {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        color: white;
+        font-family: Arial, sans-serif;
+        font-size: 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="game-ui">
+      <div id="score">Score: 0</div>
+    </div>
+    <audio src="audio/coin_sound.wav" id="coin_sound"></audio>
+    <audio src="audio/background.mp3" id="background_music" loop></audio>
+
+    <script type="module" src="js/effects.js"></script>
+    <script type="module" src="js/obstacles.js"></script>
+    <script type="module" src="js/collectibles.js"></script>
+    <script type="module" src="js/player.js"></script>
+    <script type="module" src="js/controls.js"></script>
+    <script type="module" src="js/game.js"></script>
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>
