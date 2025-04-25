@@ -1,59 +1,69 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 export class Player {
-  constructor(scene, laneX) {
+  constructor(scene, laneX, onLoad) {
+    // Add onLoad callback
     this.scene = scene;
-    this.mesh = null;
+    this.mesh = null; // Initialize mesh as null
+    this.modelLoaded = false; // Flag to track model loading
     this.speed = 0;
     this.jumpSpeed = 0.7;
     this.gravity = 1;
     this.yVelocity = 0;
     this.rotation = 180;
     this.scale = [0.35, 0.35, 0.35];
+    this.initialPosition = new THREE.Vector3(laneX, 1.0, 15);
+    this.onLoadCallback = onLoad; // Store the callback
 
-    this.init(laneX);
+    this.init();
   }
 
-  init(laneX) {
+  init() {
     // Load player model
     const loader = new GLTFLoader();
-    loader.load("/models/player.glb", (gltf) => {
-      this.mesh = gltf.scene;
+    loader.load(
+      "/models/player.glb",
+      (gltf) => {
+        this.mesh = gltf.scene;
+        this.modelLoaded = true;
 
-      // Apply scale
-      this.mesh.scale.set(this.scale[0], this.scale[1], this.scale[2]);
+        // Apply scale
+        this.mesh.scale.set(this.scale[0], this.scale[1], this.scale[2]);
 
-      // Set initial position
-      this.mesh.position.set(laneX, 1.0, 15);
+        // Set initial position
+        this.mesh.position.copy(this.initialPosition);
 
-      // Apply rotation
-      this.mesh.rotation.y = (this.rotation * Math.PI) / 180;
+        // Apply rotation
+        this.mesh.rotation.y = (this.rotation * Math.PI) / 180;
 
-      // Enable shadows
-      this.mesh.traverse((child) => {
-        if (child.isMesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
+        // Enable shadows
+        this.mesh.traverse((child) => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+
+        this.scene.add(this.mesh);
+        console.log("Player model loaded and added to scene.");
+
+        // Execute the callback if it exists
+        if (this.onLoadCallback) {
+          this.onLoadCallback();
         }
-      });
+      },
+      undefined,
+      (error) => {
+        console.error("Error loading player model:", error);
+      }
+    );
 
-      this.scene.add(this.mesh);
-    });
-
-    // Create a temporary mesh while the model is loading
-    const tempGeometry = new THREE.BoxGeometry(1, 2, 1);
-    const tempMaterial = new THREE.MeshBasicMaterial({
-      color: 0x0000ff,
-      transparent: true,
-      opacity: 0,
-    });
-    this.mesh = new THREE.Mesh(tempGeometry, tempMaterial);
-    this.mesh.position.set(laneX, 1.0, 15);
-    this.scene.add(this.mesh);
+    // No temporary mesh needed anymore
   }
 
   update(delta) {
-    if (!this.mesh) return;
+    // Only update if the model is loaded
+    if (!this.modelLoaded || !this.mesh) return;
 
     // Apply gravity if not flying
     if (this.gravity > 0) {
@@ -69,13 +79,16 @@ export class Player {
   }
 
   jump() {
+    // Only jump if the model is loaded
+    if (!this.modelLoaded || !this.mesh) return;
     if (this.mesh.position.y <= 1.0) {
       this.yVelocity = this.jumpSpeed;
     }
   }
 
   moveLeft(lanes) {
-    if (!this.mesh) return;
+    // Only move if the model is loaded
+    if (!this.modelLoaded || !this.mesh) return;
 
     // Find current lane index
     let currentLaneIndex = -1;
@@ -93,7 +106,8 @@ export class Player {
   }
 
   moveRight(lanes) {
-    if (!this.mesh) return;
+    // Only move if the model is loaded
+    if (!this.modelLoaded || !this.mesh) return;
 
     // Find current lane index
     let currentLaneIndex = -1;
@@ -115,88 +129,99 @@ export class Inspector {
   constructor(scene, x, y, z) {
     this.scene = scene;
     this.mesh = null;
+    this.modelLoaded = false;
     this.scale = [0.4, 0.4, 0.4];
+    this.initialPosition = new THREE.Vector3(x, y, z);
 
-    this.init(x, y, z);
+    this.init();
   }
 
-  init(x, y, z) {
+  init() {
     // Load inspector model
     const loader = new GLTFLoader();
-    loader.load("/models/inspector.glb", (gltf) => {
-      this.mesh = gltf.scene;
+    loader.load(
+      "/models/inspector.glb",
+      (gltf) => {
+        this.mesh = gltf.scene;
+        this.modelLoaded = true;
 
-      // Apply scale
-      this.mesh.scale.set(this.scale[0], this.scale[1], this.scale[2]);
+        // Apply scale
+        this.mesh.scale.set(this.scale[0], this.scale[1], this.scale[2]);
 
-      // Set initial position
-      this.mesh.position.set(x, y, z);
+        // Set initial position
+        this.mesh.position.copy(this.initialPosition);
 
-      // Enable shadows
-      this.mesh.traverse((child) => {
-        if (child.isMesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
-        }
-      });
+        // Enable shadows
+        this.mesh.traverse((child) => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
 
-      this.scene.add(this.mesh);
-    });
+        this.scene.add(this.mesh);
+        console.log("Inspector model loaded and added to scene.");
+      },
+      undefined,
+      (error) => {
+        console.error("Error loading inspector model:", error);
+      }
+    );
 
-    // Create a temporary mesh while the model is loading
-    const tempGeometry = new THREE.BoxGeometry(1, 2, 1);
-    const tempMaterial = new THREE.MeshBasicMaterial({
-      color: 0xff0000,
-      transparent: true,
-      opacity: 0,
-    });
-    this.mesh = new THREE.Mesh(tempGeometry, tempMaterial);
-    this.mesh.position.set(x, y, z);
-    this.scene.add(this.mesh);
+    // No temporary mesh needed
   }
 }
 
 export class Dog {
-  constructor(scene, x, y, z) {
+  constructor(scene, x, y, z, onLoad) {
+    // Add onLoad callback
     this.scene = scene;
     this.mesh = null;
+    this.modelLoaded = false;
     this.scale = [0.5, 0.5, 0.5];
+    this.initialPosition = new THREE.Vector3(x, y, z);
+    this.onLoadCallback = onLoad; // Store the callback
 
-    this.init(x, y, z);
+    this.init();
   }
 
-  init(x, y, z) {
+  init() {
     // Load dog model
     const loader = new GLTFLoader();
-    loader.load("/models/dog.glb", (gltf) => {
-      this.mesh = gltf.scene;
+    loader.load(
+      "/models/dog.glb",
+      (gltf) => {
+        this.mesh = gltf.scene;
+        this.modelLoaded = true;
 
-      // Apply scale
-      this.mesh.scale.set(this.scale[0], this.scale[1], this.scale[2]);
+        // Apply scale
+        this.mesh.scale.set(this.scale[0], this.scale[1], this.scale[2]);
 
-      // Set initial position
-      this.mesh.position.set(x, y, z);
+        // Set initial position
+        this.mesh.position.copy(this.initialPosition);
 
-      // Enable shadows
-      this.mesh.traverse((child) => {
-        if (child.isMesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
+        // Enable shadows
+        this.mesh.traverse((child) => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+
+        this.scene.add(this.mesh);
+        console.log("Dog model loaded and added to scene.");
+
+        // Execute the callback if it exists
+        if (this.onLoadCallback) {
+          this.onLoadCallback();
         }
-      });
+      },
+      undefined,
+      (error) => {
+        console.error("Error loading dog model:", error);
+      }
+    );
 
-      this.scene.add(this.mesh);
-    });
-
-    // Create a temporary mesh while the model is loading
-    const tempGeometry = new THREE.BoxGeometry(1, 1, 1);
-    const tempMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffff00,
-      transparent: true,
-      opacity: 0,
-    });
-    this.mesh = new THREE.Mesh(tempGeometry, tempMaterial);
-    this.mesh.position.set(x, y, z);
-    this.scene.add(this.mesh);
+    // No temporary mesh needed
   }
 }

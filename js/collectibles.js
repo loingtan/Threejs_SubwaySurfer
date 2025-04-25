@@ -1,233 +1,252 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
 export class CollectibleCreator {
   constructor(scene, lanes) {
     this.scene = scene;
     this.lanes = lanes;
     this.textureLoader = new THREE.TextureLoader();
+    this.gltfLoader = new GLTFLoader();
 
-    // Load textures
-    this.coinTexture = this.textureLoader.load("textures/coin.png");
-    this.jetpackTexture = this.textureLoader.load("textures/jetpack.png");
-    this.bootTexture = this.textureLoader.load("textures/boots.png");
-    this.mysteryTexture = this.textureLoader.load("textures/mystery.png");
+    // Paths to models and textures
+    this.modelPaths = {
+      coin: "/models/coin.glb",
+      jetpack: "/models/jetpack.glb",
+      // boot: '/models/boot.glb' // Assuming boot model exists if uncommented
+    };
+
+    // Loaded models cache
+    this.loadedModels = {
+      coin: null,
+      jetpack: null,
+      // boot: null
+    };
+
+    this.loadingPromise = this.loadModels();
   }
+
+  loadModels() {
+    const promises = [];
+    for (const key in this.modelPaths) {
+      const promise = new Promise((resolve, reject) => {
+        this.gltfLoader.load(
+          this.modelPaths[key],
+          (gltf) => {
+            console.log(gltf);
+            console.log(`${key} model loaded successfully.`);
+            this.loadedModels[key] = gltf.scene;
+            resolve(); // Resolve the promise when this model is loaded
+          },
+          undefined, // onProgress callback (optional)
+          (error) => {
+            console.error(`Error loading ${key} model:`, error);
+            reject(error); // Reject the promise on error
+          }
+        );
+      });
+      promises.push(promise);
+    }
+    // Return a promise that resolves when ALL model loading promises resolve
+    return Promise.all(promises);
+  }
+
+  // Optional helper to setup models after loading
+  // setupModel(model, key) {
+  //     model.traverse((child) => {
+  //         if (child.isMesh) {
+  //             child.castShadow = true;
+  //             child.receiveShadow = true;
+  //             // Apply specific textures if not embedded or need override
+  //             if (this.textures[key]) {
+  //                 child.material = new THREE.MeshStandardMaterial({
+  //                     map: this.textures[key],
+  //                     // metalness: 0.8, // Adjust as needed
+  //                     // roughness: 0.2, // Adjust as needed
+  //                 });
+  //             }
+  //         }
+  //     });
+  // }
 
   createCoins() {
     const coins = [];
-
-    // Scale lanes for coins
     const lane0 = -1.15;
     const lane1 = 0.0;
     const lane2 = 1.15;
 
-    // Create individual coins
-    coins.push(this.createCoin(lane1, 0.4, 1.0));
-    coins.push(this.createCoin(lane2, 0.4, 1.0));
-    coins.push(this.createCoin(lane0, 0.4, 1.0));
-    coins.push(this.createCoin(lane0, 0.4, 0.0));
+    // Helper function to add coin if model is loaded
+    const addCoin = (x, y, z) => {
+      const coinMesh = this.createCoin(x, y, z);
+      if (coinMesh) {
+        coins.push(coinMesh);
+      }
+    };
 
-    // Create coin runs
+    // Example positions - adjust as needed
+    addCoin(lane1, 0.4, 1.0);
+    addCoin(lane2, 0.4, 1.0);
+    addCoin(lane0, 0.4, 1.0);
+    addCoin(lane0, 0.4, 0.0);
+
     for (let i = -200; i >= -310; i -= 5) {
-      coins.push(this.createCoin(lane0, 0.4, i));
+      addCoin(lane0, 0.4, i);
     }
-
     for (let i = -60; i >= -100; i -= 5) {
-      coins.push(this.createCoin(lane1, 0.4, i));
+      addCoin(lane1, 0.4, i);
     }
 
     return coins;
   }
 
   createCoin(x, y, z) {
-    // Create coin object
-    const coinObject = {
-      mesh: null,
-      scale: [5, 5, 5],
-    };
+    const scale = 20; // Adjust scale as needed for the model
 
-    // Create coin geometry
-    const geometry = new THREE.CylinderGeometry(0.5, 0.5, 0.1, 32);
-    const material = new THREE.MeshStandardMaterial({
-      map: this.coinTexture,
-      metalness: 0.8,
-      roughness: 0.2,
-      color: 0xffd700,
-    });
+    if (this.loadedModels.coin) {
+      const coinMesh = this.loadedModels.coin.clone(); // Clone the loaded model
+      coinMesh.scale.set(scale, scale, scale);
+      coinMesh.position.set(x, y, z);
+      // Math.PI / 2; // Rotate if necessary
 
-    // Create coin mesh
-    coinObject.mesh = new THREE.Mesh(geometry, material);
-    coinObject.mesh.position.set(x, y, z);
-    coinObject.mesh.rotation.x = Math.PI / 2;
+      coinMesh.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+          // Ensure material allows shadows and looks good
+          if (child.material) {
+            child.material.metalness = 0.8;
+            child.material.roughness = 0.2;
+          }
+        }
+      });
 
-    // Apply scale
-    coinObject.mesh.scale.set(0.2, 0.2, 0.2);
-
-    // Enable shadows
-    coinObject.mesh.castShadow = true;
-    coinObject.mesh.receiveShadow = true;
-
-    // Add coin to scene
-    this.scene.add(coinObject.mesh);
-
-    return coinObject;
+      // Add user data for animation/identification
+      coinMesh.userData = { type: "coin", rotationSpeed: Math.PI }; // Radians per second
+      this.scene.add(coinMesh);
+      console.log(
+        "Added coin to scene at:",
+        coinMesh.position.x,
+        coinMesh.position.y,
+        coinMesh.position.z
+      );
+      return coinMesh; // Return the mesh directly
+    } else {
+      // Model not loaded yet, skip creation
+      console.warn(
+        `Coin model not loaded yet. Skipping creation at (${x}, ${y}, ${z}).`
+      );
+      return null; // Indicate that no coin was created
+    }
   }
 
   createJetpacks() {
     const jetpacks = [];
+    // Use different variable names to avoid redeclaration
+    const jetpackLane0 = -1.15;
+    const jetpackLane1 = 0.0;
+    const jetpackLane2 = 1.15;
 
-    // Scale lanes for jetpacks
-    const lane0 = -0.285;
-    const lane1 = 0.0;
-    const lane2 = 0.285;
-
-    // Create jetpacks
-    jetpacks.push(this.createJetpack(lane0, 0.15, -5.0));
-    jetpacks.push(this.createJetpack(lane2, 0.15, -12.0));
+    jetpacks.push(this.createJetpack(jetpackLane0, 0.5, -5.0)); // Adjusted Y position
+    jetpacks.push(this.createJetpack(jetpackLane2, 0.5, -12.0));
 
     return jetpacks;
   }
 
   createJetpack(x, y, z) {
-    // Create jetpack using model
-    const jetpackObject = {
-      mesh: null,
-      scale: [20, 20, 20],
-    };
+    const scale = 30; // Adjust scale as needed
 
-    const loader = new GLTFLoader();
-    loader.load("/models/jetpack.glb", (gltf) => {
-      jetpackObject.mesh = gltf.scene;
+    if (this.loadedModels.jetpack) {
+      const jetpackMesh = this.loadedModels.jetpack.clone();
+      jetpackMesh.scale.set(scale, scale, scale);
+      jetpackMesh.position.set(x, y, z);
+      // jetpackMesh.rotation.y = Math.PI; // Rotate if necessary
 
-      // Apply scale
-      jetpackObject.mesh.scale.set(
-        jetpackObject.scale[0],
-        jetpackObject.scale[1],
-        jetpackObject.scale[2]
-      );
-
-      // Set position
-      jetpackObject.mesh.position.set(x, y, z);
-
-      // Enable shadows
-      jetpackObject.mesh.traverse((child) => {
+      jetpackMesh.traverse((child) => {
         if (child.isMesh) {
           child.castShadow = true;
           child.receiveShadow = true;
-
-          // Apply texture
-          child.material = new THREE.MeshStandardMaterial({
-            map: this.jetpackTexture,
-            roughness: 0.7,
-          });
+          // Apply specific texture if needed - REMOVED to use GLB embedded materials
+          // child.material = new THREE.MeshStandardMaterial({
+          //   map: this.textures.jetpack, // Use preloaded texture
+          //   roughness: 0.7,
+          // });
         }
       });
 
-      this.scene.add(jetpackObject.mesh);
-    });
-
-    // Create temporary box while model is loading
-    const tempGeometry = new THREE.BoxGeometry(0.5, 1, 0.5);
-    const tempMaterial = new THREE.MeshBasicMaterial({
-      color: 0xff0000,
-      transparent: true,
-      opacity: 0.5,
-    });
-    jetpackObject.mesh = new THREE.Mesh(tempGeometry, tempMaterial);
-    jetpackObject.mesh.position.set(x, y, z);
-    this.scene.add(jetpackObject.mesh);
-
-    return jetpackObject;
+      // Add user data for animation/identification
+      jetpackMesh.userData = {
+        type: "jetpack",
+        bobSpeed: 2, // Oscillations per second
+        bobAmount: 0.1, // Max displacement
+        initialY: y,
+      };
+      this.scene.add(jetpackMesh);
+      console.log(
+        "Added jetpack to scene at:",
+        jetpackMesh.position.x,
+        jetpackMesh.position.y,
+        jetpackMesh.position.z
+      );
+      return jetpackMesh; // Return the mesh directly
+    } else {
+      // Model not loaded yet, skip creation
+      console.warn(
+        `Jetpack model not loaded yet. Skipping creation at (${x}, ${y}, ${z}).`
+      );
+      return null; // Indicate that no jetpack was created
+    }
   }
 
-  //   createBoots() {
-  //     const boots = [];
+  // --- Boots code removed as model 'boot.glb' is likely missing ---
+  // createBoots() { ... }
+  // createBoot(x, y, z) { ... }
+  // --- End of removed boots code ---
 
-  //     // Scale lanes for boots
-  //     const lane0 = -23.08;
-  //     const lane1 = 0.0;
-  //     const lane2 = 23.08;
+  // createMysteryBox() {
+  //   // Keep using BoxGeometry as no model specified
+  //   const x = 0.0;
+  //   const y = 0.4;
+  //   const z = -55; // Adjusted Z position (-440 * 0.125)
 
-  //     // Create boots
-  //     boots.push(this.createBoot(lane2, 6.0, -90.0 / 0.25));
-  //     boots.push(this.createBoot(lane1, 6.0, -1000));
+  //   const mysteryBox = new THREE.Mesh(
+  //     new THREE.BoxGeometry(1, 1, 1),
+  //     new THREE.MeshStandardMaterial({
+  //       map: this.textures.mystery,
+  //       roughness: 0.3,
+  //       metalness: 0.7,
+  //     })
+  //   );
 
-  //     return boots;
-  //   }
+  //   mysteryBox.position.set(x, y, z);
+  //   mysteryBox.scale.set(0.8, 0.8, 0.8); // Adjusted scale (was 8,8,8)
+  //   mysteryBox.castShadow = true;
+  //   mysteryBox.receiveShadow = true;
 
-  //   createBoot(x, y, z) {
-  //     // Create boot using model
-  //     const bootObject = {
-  //       mesh: null,
-  //       scale: [0.25, 0.25, 0.25],
-  //     };
+  //   // Add user data for animation/identification
+  //   mysteryBox.userData = { type: "mysteryBox", rotationSpeed: Math.PI / 2 }; // Slower rotation
+  //   this.scene.add(mysteryBox);
+  //   return mysteryBox; // Return the mesh directly
+  // }
 
-  //     const loader = new GLTFLoader();
-  //     loader.load("models/boot.glb", (gltf) => {
-  //       bootObject.mesh = gltf.scene;
-
-  //       // Apply scale
-  //       bootObject.mesh.scale.set(
-  //         bootObject.scale[0],
-  //         bootObject.scale[1],
-  //         bootObject.scale[2]
-  //       );
-
-  //       // Set position
-  //       bootObject.mesh.position.set(x, y, z);
-
-  //       // Enable shadows
-  //       bootObject.mesh.traverse((child) => {
-  //         if (child.isMesh) {
-  //           child.castShadow = true;
-  //           child.receiveShadow = true;
-
-  //           // Apply texture
-  //           child.material = new THREE.MeshStandardMaterial({
-  //             map: this.bootTexture,
-  //             roughness: 0.7,
-  //           });
-  //         }
-  //       });
-
-  //       this.scene.add(bootObject.mesh);
-  //     });
-
-  //     // Create temporary box while model is loading
-  //     const tempGeometry = new THREE.BoxGeometry(1, 1, 1.5);
-  //     const tempMaterial = new THREE.MeshBasicMaterial({
-  //       color: 0x000000,
-  //       transparent: true,
-  //       opacity: 0.5,
-  //     });
-  //     bootObject.mesh = new THREE.Mesh(tempGeometry, tempMaterial);
-  //     bootObject.mesh.position.set(x, y, z);
-  //     this.scene.add(bootObject.mesh);
-
-  //     return bootObject;
-  //   }
-
-  createMysteryBox() {
-    // Create mystery box
-    const x = 0.0;
-    const y = 0.4;
-    const z = -440 * 0.125; // -440 / 8
-
-    const mysteryBox = new THREE.Mesh(
-      new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshStandardMaterial({
-        map: this.mysteryTexture,
-        roughness: 0.3,
-        metalness: 0.7,
-      })
-    );
-
-    mysteryBox.position.set(x, y, z);
-    mysteryBox.scale.set(8, 8, 8);
-    mysteryBox.castShadow = true;
-    mysteryBox.receiveShadow = true;
-
-    this.scene.add(mysteryBox);
-    return mysteryBox;
+  // Add an update method to handle animations
+  update(delta, time) {
+    // Animate coins
+    this.scene.children.forEach((child) => {
+      if (child.userData?.type === "coin" && !child.userData.isPlaceholder) {
+        child.rotation.x += child.userData.rotationSpeed * delta; // Rotate around its local X axis
+      }
+      // Animate jetpacks (bobbing)
+      else if (
+        child.userData?.type === "jetpack" &&
+        !child.userData.isPlaceholder
+      ) {
+        const bobOffset =
+          Math.sin(time * child.userData.bobSpeed) * child.userData.bobAmount;
+        child.position.y = child.userData.initialY + bobOffset;
+      }
+      // Animate mystery box
+      else if (child.userData?.type === "mysteryBox") {
+        child.rotation.y += child.userData.rotationSpeed * delta;
+      }
+    });
   }
 }

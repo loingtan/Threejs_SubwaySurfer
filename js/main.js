@@ -35,9 +35,9 @@ function init() {
   game.init();
 
   // Start background music
-  document.getElementById("background_music").play();
+  // document.getElementById("background_music").play();
 
-  // Start animation loop
+  // // Start animation loop
   animate();
 }
 

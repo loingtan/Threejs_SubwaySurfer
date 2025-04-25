@@ -11,10 +11,24 @@ export class Controls {
 
   handleKeyDown(e) {
     // Start the game if it's not already started
-    if (this.game.speed === 0 && e.keyCode) {
+    // Add checks for player/inspector mesh existence
+    if (
+      this.game.speed === 0 &&
+      e.keyCode &&
+      this.game.player &&
+      this.game.player.mesh && // Check player mesh
+      this.game.inspector &&
+      this.game.inspector.mesh // Check inspector mesh
+    ) {
       this.game.speed = this.game.initialSpeed * 1.2;
+      // Now it's safe to access positions
       this.game.inspector.mesh.position.z =
         this.game.player.mesh.position.z + 45;
+    }
+
+    // Add check for player mesh before handling movement/jump keys
+    if (!this.game.player || !this.game.player.mesh) {
+      return; // Don't process input if player mesh isn't ready
     }
 
     switch (e.keyCode) {

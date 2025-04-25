@@ -37,6 +37,9 @@ export class Game {
     // Lanes
     this.lanes = [-1.15, 0, 1.15]; // Left, Center, Right
 
+    // Collectible Creator instance
+    this.collectibleCreator = null; // Added
+
     // Special effects timers
     this.jetpackTimer = -1;
     this.bootsTimer = -1;
@@ -52,20 +55,18 @@ export class Game {
     this.effects = new Effects(this.scene, this.camera);
   }
 
-  init() {
-    // Setup scene
+  async init() {
+    // Make init asynchronous
     this.setupLights();
     this.setupEnvironment();
-
-    // Create game objects
-    this.createPlayer();
-    this.createInspector();
-    this.createDog();
+    this.createPlayer(); // Player creation might also be async if models load inside
+    this.createInspector(); // Inspector creation might also be async
+    this.createDog(); // Dog creation might also be async
     this.createTracks();
-    this.createObstacles();
-    this.createCollectibles();
+    await this.createObstacles(); // Wait for obstacles (and their models)
+    await this.createCollectibles(); // Wait for collectibles to be created (including model loading)
 
-    // Start gameplay
+    // Start gameplay only after everything is initialized
     this.startGame();
   }
 
@@ -140,19 +141,40 @@ export class Game {
   }
 
   createPlayer() {
-    this.player = new Player(this.scene, this.lanes[1]); // Start in center lane
-    this.camera.position.set(0, 8.5, this.player.mesh.position.z + 20);
-    this.camera.lookAt(0, 0, this.player.mesh.position.z);
+    // Pass a callback to set initial camera position after model loads
+    this.player = new Player(this.scene, this.lanes[1], () => {
+      // This code runs *after* the player model is loaded
+      if (this.player.mesh) {
+        // Ensure mesh exists (good practice)
+        this.camera.position.set(0, 8.5, this.player.mesh.position.z + 20);
+        this.camera.lookAt(0, 0, this.player.mesh.position.z);
+      }
+    });
+    // Camera positioning moved to the callback above
+    // this.camera.position.set(0, 8.5, this.player.mesh.position.z + 20); // Error prone line removed
+    // this.camera.lookAt(0, 0, this.player.mesh.position.z); // Error prone line removed
   }
 
   createInspector() {
     this.inspector = new Inspector(this.scene, 0, 1.0, 125);
-    this.inspector.mesh.rotation.y = Math.PI;
+    // Rotation can be set immediately as it doesn't depend on the mesh being loaded yet
+    // but accessing position for logic should wait or be checked.
+    // this.inspector.mesh.rotation.y = Math.PI; // This would cause an error if mesh is null
+    // We can set rotation after load if needed, or check mesh existence before use.
+    // For now, let's ensure checks are in place where inspector.mesh is used.
   }
 
   createDog() {
-    this.dog = new Dog(this.scene, 0, 0, 0);
-    this.dog.mesh.rotation.y = Math.PI;
+    // Pass a callback to set rotation after the model loads
+    this.dog = new Dog(this.scene, 0, 0, 0, () => {
+      // This code runs *after* the dog model is loaded
+      if (this.dog.mesh) {
+        // Ensure mesh exists
+        this.dog.mesh.rotation.y = Math.PI;
+      }
+    });
+    // Rotation setting moved to the callback above
+    // this.dog.mesh.rotation.y = Math.PI; // Error prone line removed
   }
 
   createTracks() {
@@ -160,8 +182,12 @@ export class Game {
     this.tracks = trackCreator.createTracks(-200, 200); // Create tracks from z=-200 to z=200
   }
 
-  createObstacles() {
+  async createObstacles() {
+    // Make this function async
     const obstacleCreator = new ObstacleCreator(this.scene, this.lanes);
+
+    // Wait for the obstacle models to load before creating instances
+    await obstacleCreator.loadingPromise;
 
     // Create trains
     this.trains = obstacleCreator.createTrains();
@@ -176,36 +202,45 @@ export class Game {
     this.barrels = obstacleCreator.createBarrels();
   }
 
-  createCollectibles() {
-    const collectibleCreator = new CollectibleCreator(this.scene, this.lanes);
+  async createCollectibles() {
+    // Make createCollectibles asynchronous
+    // Instantiate the creator
+    this.collectibleCreator = new CollectibleCreator(this.scene, this.lanes);
 
-    // Create coins
-    this.coins = collectibleCreator.createCoins();
+    // Wait for all models within CollectibleCreator to load
+    await this.collectibleCreator.loadingPromise;
 
-    // Create jetpacks
-    this.jetpacks = collectibleCreator.createJetpacks();
+    // Now it's safe to create collectibles that depend on loaded models
+    this.coins = this.collectibleCreator.createCoins();
+    this.jetpacks = this.collectibleCreator.createJetpacks();
+    // this.mysteryBox = this.collectibleCreator.createMysteryBox();
 
-    // // Create boots
-    // this.boots = collectibleCreator.createBoots();
-
-    // Create mystery box
-    this.mysteryBox = collectibleCreator.createMysteryBox();
+    // Filter out any null entries if create functions returned null due to loading issues (belt-and-braces)
+    this.coins = this.coins.filter((coin) => coin !== null);
+    this.jetpacks = this.jetpacks.filter((jetpack) => jetpack !== null);
+    // No need to filter mysteryBox as it's a single object, check if it exists later
   }
 
   update() {
     if (this.isGameOver) return;
 
     const delta = this.clock.getDelta();
+    const elapsedTime = this.clock.getElapsedTime(); // Get elapsed time for animations
     this.timer += delta;
 
     // Update player
     this.player.update(delta);
 
     // Update camera position to follow player
-    this.updateCamera();
+    this.updateCamera(); // Uncommented
 
     // Move all objects backwards to simulate player moving forward
-    this.moveObjects(delta);
+    // this.moveObjects(delta); // Uncommented
+
+    // Update collectible animations
+    if (this.collectibleCreator) {
+      this.collectibleCreator.update(delta, elapsedTime); // Added call to collectible animations
+    }
 
     // Check collisions
     this.checkCollisions();
@@ -229,9 +264,11 @@ export class Game {
   }
 
   updateCamera() {
+    // Add checks for player and player.mesh before accessing position
+    if (!this.player || !this.player.mesh) return;
+
     if (this.jetpackTimer > 0) {
       this.camera.position.set(0, 11.5, this.player.mesh.position.z + 25);
-      this.camera.lookAt(0, 8, this.player.mesh.position.z);
     } else {
       this.camera.position.set(0, 8.5, this.player.mesh.position.z + 20);
       this.camera.lookAt(0, 0, this.player.mesh.position.z);
@@ -262,10 +299,14 @@ export class Game {
 
   moveObjectGroup(objects, distance) {
     objects.forEach((object) => {
-      if (object.mesh) {
-        object.mesh.position.z += distance;
-      } else if (object.position) {
-        object.position.z += distance;
+      // Add a check to ensure the object itself is not null/undefined
+      if (object) {
+        if (object.mesh) {
+          object.mesh.position.z += distance;
+        } else if (object.position) {
+          // Check for direct position property (e.g., for coins, tracks)
+          object.position.z += distance;
+        }
       }
     });
   }
@@ -289,8 +330,9 @@ export class Game {
 
   checkCoinCollisions() {
     for (let i = 0; i < this.coins.length; i++) {
-      const coin = this.coins[i];
-      if (this.isColliding(this.player.mesh, coin.mesh, 0.2, 0.2, 0.2)) {
+      const coin = this.coins[i]; // Direct mesh reference
+      // Adjusted collision check to use the mesh directly
+      if (this.isColliding(this.player.mesh, coin, 0.2, 0.2, 0.2)) {
         // Play coin sound
         const coinSound = document.getElementById("coin_sound");
         coinSound.currentTime = 0;
@@ -298,7 +340,7 @@ export class Game {
 
         // Add score and remove coin
         this.score += 10;
-        this.scene.remove(coin.mesh);
+        this.scene.remove(coin); // Remove mesh directly
         this.coins.splice(i, 1);
         i--;
       }
@@ -340,7 +382,7 @@ export class Game {
     // Check collision with cones
     for (let i = 0; i < this.cones.length; i++) {
       if (
-        this.isColliding(this.player.mesh, this.cones[i].mesh, 0.1, 1.33, 2)
+        this.isColliding(this.player.mesh, this.cones[i].mesh, 0.5, 1.33, 2) // Changed X threshold from 0.1 to 0.5
       ) {
         this.scene.remove(this.cones[i].mesh);
         this.cones.splice(i, 1);
@@ -354,39 +396,47 @@ export class Game {
   checkPowerupCollisions() {
     // Check collision with jetpacks
     for (let i = 0; i < this.jetpacks.length; i++) {
-      if (
-        this.isColliding(this.player.mesh, this.jetpacks[i].mesh, 0.1, 4, 0.1)
-      ) {
+      const jetpack = this.jetpacks[i]; // Direct mesh reference
+      // Adjusted collision check to use the mesh directly
+      if (this.isColliding(this.player.mesh, jetpack, 0.1, 4, 0.1)) {
         this.jetpackTimer = 10; // 10 seconds of jetpack
         this.player.mesh.position.y = 23;
         this.player.gravity = 0;
-        this.scene.remove(this.jetpacks[i].mesh);
+        this.scene.remove(jetpack); // Remove mesh directly
         this.jetpacks.splice(i, 1);
         i--;
       }
     }
 
-    // Check collision with boots
-    for (let i = 0; i < this.boots.length; i++) {
-      if (
-        this.isColliding(this.player.mesh, this.boots[i].mesh, 0.1, 0.84, 0.1)
-      ) {
-        this.bootsTimer = 20; // 20 seconds of super jump
-        this.player.jumpSpeed = 1.0;
-        this.scene.remove(this.boots[i].mesh);
-        this.boots.splice(i, 1);
-        i--;
-      }
-    }
+    // Check collision with boots (if re-enabled)
+    // for (let i = 0; i < this.boots.length; i++) {
+    //   const boot = this.boots[i]; // Direct mesh reference
+    //   if (this.isColliding(this.player.mesh, boot, 0.1, 0.84, 0.1)) {
+    //     this.bootsTimer = 20; // 20 seconds of super jump
+    //     this.player.jumpSpeed = 1.0;
+    //     this.scene.remove(boot); // Remove mesh directly
+    //     this.boots.splice(i, 1);
+    //     i--;
+    //   }
+    // }
   }
 
   checkMysteryBoxCollision() {
     if (
       this.mysteryBox &&
+      // Adjusted collision check to use the mesh directly
       this.isColliding(this.player.mesh, this.mysteryBox, 0.1, 0.35, 0.1)
     ) {
-      this.player.rotation = 0;
-      this.dog.rotation = 0;
+      // Note: Rotating the player/dog might not be the intended effect here.
+      // Consider triggering a specific power-up or event.
+      // this.player.rotation = 0; // Original logic kept for now
+      // this.dog.rotation = 0; // Original logic kept for now
+
+      // Example: Grant a random power-up or score bonus
+      console.log("Mystery Box collected!");
+      this.score += 50; // Example bonus
+      this.scene.remove(this.mysteryBox);
+      this.mysteryBox = null; // Remove after collection
     }
   }
 
@@ -441,7 +491,14 @@ export class Game {
         this.speed = this.initialSpeed;
 
         // Reset inspector position if recovered
-        if (this.speed === this.initialSpeed) {
+        // Add checks for inspector and player mesh before accessing position
+        if (
+          this.speed === this.initialSpeed &&
+          this.inspector &&
+          this.inspector.mesh &&
+          this.player &&
+          this.player.mesh
+        ) {
           this.inspector.mesh.position.z = this.player.mesh.position.z + 45;
         }
       }
@@ -449,14 +506,21 @@ export class Game {
   }
 
   updateDogPosition() {
-    if (this.dog) {
+    // Add checks for dog and dog.mesh before accessing position
+    if (this.dog && this.dog.mesh && this.player && this.player.mesh) {
       this.dog.mesh.position.z = this.player.mesh.position.z + 7;
       this.dog.mesh.position.x = this.player.mesh.position.x;
     }
   }
 
   updateInspector(delta) {
-    if (this.inspector) {
+    // Add checks for inspector and inspector.mesh
+    if (
+      this.inspector &&
+      this.inspector.mesh &&
+      this.player &&
+      this.player.mesh
+    ) {
       // Move inspector closer to player if speed is reduced
       const inspectorSpeed = this.speed < this.initialSpeed ? 0.2 : 0;
       this.inspector.mesh.position.z -= inspectorSpeed * delta * 60;

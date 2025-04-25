@@ -1,4 +1,14 @@
 {
+
+"scripts": {
+    "dev": "npx vite",
+    "build": "npx vite build",
+    "serve": "npx vite preview",
+    "predeploy": "npm run build",
+    "deploy": "npx gh-pages -d dist"
+  },
+
+
   "dependencies": {
     "three": "^0.175.0"
   },

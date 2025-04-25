@@ -4,13 +4,7 @@ export class ObstacleCreator {
   constructor(scene, lanes) {
     this.scene = scene;
     this.lanes = lanes;
-    this.textureLoader = new THREE.TextureLoader();
-
-    // Load textures
-    this.trainTexture = this.textureLoader.load("/textures/train.png");
-    this.barrierTexture = this.textureLoader.load("/textures/roadbarrier.png");
-    this.coneTexture = this.textureLoader.load("/textures/cone.png");
-    this.barrelTexture = this.textureLoader.load("/textures/barrel.png");
+    // Removed textureLoader and individual texture loading for models
 
     // Load the single model file with all objects
     this.modelParts = {
@@ -19,44 +13,81 @@ export class ObstacleCreator {
       cone: null,
       barrel: null,
     };
-
-    this.loadModelParts();
+    this.modelsLoaded = false; // Flag to track if models are loaded
+    this.loadingPromise = this.loadModelParts(); // Store promise
   }
 
   loadModelParts() {
-    const loader = new GLTFLoader();
-    loader.load("/models/train.glb", (gltf) => {
-      // Store references to different parts of the model
-      // Assuming the model has named meshes or groups for each part
-      gltf.scene.traverse((child) => {
-        if (child.isMesh || child.isGroup) {
-          if (child.name.includes("train")) {
-            this.modelParts.train = child.clone();
-          } else if (
-            child.name.includes("barrier") ||
-            child.name.includes("roadbarrier")
-          ) {
-            this.modelParts.barrier = child.clone();
-          } else if (child.name.includes("cone")) {
-            this.modelParts.cone = child.clone();
-          } else if (child.name.includes("barrel")) {
-            this.modelParts.barrel = child.clone();
-          }
-        }
-      });
+    // Return a promise that resolves when loading and processing is done
+    return new Promise((resolve, reject) => {
+      const loader = new GLTFLoader();
+      loader.load(
+        "/models/train.glb", // Assuming train.glb contains all obstacle parts
+        (gltf) => {
+          console.log("Obstacle models loaded successfully.");
+          // Store references to different parts of the model
+          // Assuming the model has named meshes or groups for each part
+          gltf.scene.traverse((child) => {
+            // Enable shadows and check names
+            if (child.isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
 
-      // If specific naming isn't available, try to identify by geometry or position
-      if (!this.modelParts.train) {
-        console.warn(
-          "Train model part not found by name. Using fallback method."
-        );
-        // You might need to adjust this based on your model's structure
-      }
+            const childNameLower = child.name.toLowerCase();
+            if (childNameLower.includes("train") && !this.modelParts.train) {
+              // Assign only once
+              this.modelParts.train = child;
+            } else if (
+              (childNameLower.includes("barrier") ||
+                childNameLower.includes("roadbarrier")) &&
+              !this.modelParts.barrier
+            ) {
+              this.modelParts.barrier = child;
+            } else if (
+              childNameLower.includes("cone") &&
+              !this.modelParts.cone
+            ) {
+              this.modelParts.cone = child;
+            } else if (
+              childNameLower.includes("barrel") &&
+              !this.modelParts.barrel
+            ) {
+              this.modelParts.barrel = child;
+            }
+          });
+
+          // Check if all parts were found
+          let allPartsFound = true;
+          for (const part in this.modelParts) {
+            if (!this.modelParts[part]) {
+              console.warn(
+                `Obstacle model part '${part}' not found by name in train.glb.`
+              );
+              allPartsFound = false;
+              // Implement fallback logic here if needed
+            } else {
+              console.log(`Found model part: ${part}`);
+            }
+          }
+          this.modelsLoaded = true; // Set flag when loading is complete
+          resolve(); // Resolve the promise
+        },
+        undefined,
+        (error) => {
+          console.error("Error loading obstacle models:", error);
+          reject(error); // Reject the promise on error
+        }
+      );
     });
   }
 
   createTrains() {
     const trains = [];
+    if (!this.modelsLoaded || !this.modelParts.train) {
+      console.warn("Train model part not ready, skipping train creation.");
+      return trains; // Return empty if model not ready
+    }
 
     // Scale lanes for trains
     const L0 = -23;
@@ -72,60 +103,28 @@ export class ObstacleCreator {
   }
 
   createTrain(x, y, z) {
-    // Create train using model
     const trainObject = {
       mesh: null,
       scale: [0.25, 0.25, 0.25],
     };
-
-    // Create temporary box while model is loading
-    const tempGeometry = new THREE.BoxGeometry(4, 4, 12);
-    const tempMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffff00,
-      transparent: true,
-      opacity: 0.5,
-    });
-    trainObject.mesh = new THREE.Mesh(tempGeometry, tempMaterial);
-    trainObject.mesh.position.set(x, y, z);
-    this.scene.add(trainObject.mesh);
-
-    // If the model part is already loaded, use it
-    if (this.modelParts.train) {
-      this.replaceWithModelPart(
-        trainObject,
-        this.modelParts.train,
-        x,
-        y,
-        z,
-        Math.PI,
-        this.trainTexture
-      );
-    } else {
-      // If not loaded yet, set up a check to replace it once loaded
-      const checkInterval = setInterval(() => {
-        if (this.modelParts.train) {
-          this.replaceWithModelPart(
-            trainObject,
-            this.modelParts.train,
-            x,
-            y,
-            z,
-            Math.PI,
-            this.trainTexture
-          );
-          clearInterval(checkInterval);
-        }
-      }, 100);
-
-      // Clear interval after 10 seconds to prevent infinite checks
-      setTimeout(() => clearInterval(checkInterval), 10000);
-    }
-
+    // Use the loaded model part directly, remove texture argument
+    this.setupModelInstance(
+      trainObject,
+      this.modelParts.train,
+      x,
+      y,
+      z,
+      Math.PI // Rotation Y
+    );
     return trainObject;
   }
 
   createBarriers() {
     const barriers = [];
+    if (!this.modelsLoaded || !this.modelParts.barrier) {
+      console.warn("Barrier model part not ready, skipping barrier creation.");
+      return barriers;
+    }
 
     // Scale lanes for barriers
     const lane0 = -28.85;
@@ -144,60 +143,28 @@ export class ObstacleCreator {
   }
 
   createBarrier(x, y, z) {
-    // Create barrier using model
     const barrierObject = {
       mesh: null,
-      scale: [0.1, 0.1, 0.2],
+      scale: [0.1, 0.1, 0.2], // Adjust scale as needed based on the model part
     };
-
-    // Create temporary box while model is loading
-    const tempGeometry = new THREE.BoxGeometry(2, 2, 2);
-    const tempMaterial = new THREE.MeshBasicMaterial({
-      color: 0xff0000,
-      transparent: true,
-      opacity: 0.5,
-    });
-    barrierObject.mesh = new THREE.Mesh(tempGeometry, tempMaterial);
-    barrierObject.mesh.position.set(x, y, z);
-    this.scene.add(barrierObject.mesh);
-
-    // If the model part is already loaded, use it
-    if (this.modelParts.barrier) {
-      this.replaceWithModelPart(
-        barrierObject,
-        this.modelParts.barrier,
-        x,
-        y,
-        z,
-        0,
-        this.barrierTexture
-      );
-    } else {
-      // If not loaded yet, set up a check to replace it once loaded
-      const checkInterval = setInterval(() => {
-        if (this.modelParts.barrier) {
-          this.replaceWithModelPart(
-            barrierObject,
-            this.modelParts.barrier,
-            x,
-            y,
-            z,
-            0,
-            this.barrierTexture
-          );
-          clearInterval(checkInterval);
-        }
-      }, 100);
-
-      // Clear interval after 10 seconds to prevent infinite checks
-      setTimeout(() => clearInterval(checkInterval), 10000);
-    }
-
+    // Use the loaded model part directly, remove texture argument
+    this.setupModelInstance(
+      barrierObject,
+      this.modelParts.barrier,
+      x,
+      y,
+      z,
+      0 // Rotation Y
+    );
     return barrierObject;
   }
 
   createCones() {
     const cones = [];
+    if (!this.modelsLoaded || !this.modelParts.cone) {
+      console.warn("Cone model part not ready, skipping cone creation.");
+      return cones;
+    }
 
     // Scale lanes for cones
     const lane0 = -28.85;
@@ -219,63 +186,29 @@ export class ObstacleCreator {
   }
 
   createCone(x, y, z) {
-    // Create cone using model
     const coneObject = {
       mesh: null,
-      scale: [0.2, 0.2, 0.2],
+      scale: [0.2, 0.2, 0.2], // Adjust scale as needed
     };
-
-    // Create temporary cone while model is loading
-    const tempGeometry = new THREE.ConeGeometry(1, 2, 16);
-    const tempMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffa500,
-      transparent: true,
-      opacity: 0.5,
-    });
-    coneObject.mesh = new THREE.Mesh(tempGeometry, tempMaterial);
-    coneObject.mesh.position.set(x, y, z);
-    this.scene.add(coneObject.mesh);
-
-    // If the model part is already loaded, use it
-    if (this.modelParts.cone) {
-      // For cones, we need special rotation
-      this.replaceWithModelPart(
-        coneObject,
-        this.modelParts.cone,
-        x,
-        y,
-        z,
-        Math.PI / 2,
-        this.coneTexture,
-        { x: (3 * Math.PI) / 2, y: Math.PI / 2, z: 0 }
-      );
-    } else {
-      // If not loaded yet, set up a check to replace it once loaded
-      const checkInterval = setInterval(() => {
-        if (this.modelParts.cone) {
-          this.replaceWithModelPart(
-            coneObject,
-            this.modelParts.cone,
-            x,
-            y,
-            z,
-            Math.PI / 2,
-            this.coneTexture,
-            { x: (3 * Math.PI) / 2, y: Math.PI / 2, z: 0 }
-          );
-          clearInterval(checkInterval);
-        }
-      }, 100);
-
-      // Clear interval after 10 seconds to prevent infinite checks
-      setTimeout(() => clearInterval(checkInterval), 10000);
-    }
-
+    // Use the loaded model part directly, remove texture argument
+    this.setupModelInstance(
+      coneObject,
+      this.modelParts.cone,
+      x,
+      y,
+      z,
+      Math.PI / 2, // Rotation Y
+      { x: (3 * Math.PI) / 2, y: Math.PI / 2, z: 0 } // Extra rotation
+    );
     return coneObject;
   }
 
   createBarrels() {
     const barrels = [];
+    if (!this.modelsLoaded || !this.modelParts.barrel) {
+      console.warn("Barrel model part not ready, skipping barrel creation.");
+      return barrels;
+    }
 
     // Scale lanes for barrels
     const lane0 = -28.85;
@@ -290,74 +223,38 @@ export class ObstacleCreator {
   }
 
   createBarrel(x, y, z) {
-    // Create barrel using model
     const barrelObject = {
       mesh: null,
-      scale: [0.2, 0.2, 0.2],
+      scale: [0.2, 0.2, 0.2], // Adjust scale as needed
     };
-
-    // Create temporary cylinder while model is loading
-    const tempGeometry = new THREE.CylinderGeometry(1, 1, 2, 16);
-    const tempMaterial = new THREE.MeshBasicMaterial({
-      color: 0xff0000,
-      transparent: true,
-      opacity: 0.5,
-    });
-    barrelObject.mesh = new THREE.Mesh(tempGeometry, tempMaterial);
-    barrelObject.mesh.position.set(x, y, z);
-    this.scene.add(barrelObject.mesh);
-
-    // If the model part is already loaded, use it
-    if (this.modelParts.barrel) {
-      this.replaceWithModelPart(
-        barrelObject,
-        this.modelParts.barrel,
-        x,
-        y,
-        z,
-        0,
-        this.barrelTexture
-      );
-    } else {
-      // If not loaded yet, set up a check to replace it once loaded
-      const checkInterval = setInterval(() => {
-        if (this.modelParts.barrel) {
-          this.replaceWithModelPart(
-            barrelObject,
-            this.modelParts.barrel,
-            x,
-            y,
-            z,
-            0,
-            this.barrelTexture
-          );
-          clearInterval(checkInterval);
-        }
-      }, 100);
-
-      // Clear interval after 10 seconds to prevent infinite checks
-      setTimeout(() => clearInterval(checkInterval), 10000);
-    }
-
+    // Use the loaded model part directly, remove texture argument
+    this.setupModelInstance(
+      barrelObject,
+      this.modelParts.barrel,
+      x,
+      y,
+      z,
+      0 // Rotation Y
+    );
     return barrelObject;
   }
 
-  // Helper method to replace temporary object with the actual model part
-  replaceWithModelPart(
+  // Renamed and simplified helper method
+  setupModelInstance(
     objectInfo,
     modelPart,
     x,
     y,
     z,
     rotationY,
-    texture,
     extraRotation = null
   ) {
-    // Remove the temporary mesh
-    this.scene.remove(objectInfo.mesh);
-
-    // Clone the model part
-    objectInfo.mesh = modelPart.clone();
+    if (!modelPart) {
+      console.error("Model part is null, cannot create instance.");
+      return;
+    }
+    // Clone the model part (deep clone to get materials)
+    objectInfo.mesh = modelPart.clone(true);
 
     // Apply scale
     objectInfo.mesh.scale.set(
@@ -380,19 +277,8 @@ export class ObstacleCreator {
         objectInfo.mesh.rotation.z = extraRotation.z;
     }
 
-    // Enable shadows and apply texture
-    objectInfo.mesh.traverse((child) => {
-      if (child.isMesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
-
-        // Apply texture
-        child.material = new THREE.MeshStandardMaterial({
-          map: texture,
-          roughness: 0.7,
-        });
-      }
-    });
+    // Shadows should have been enabled during loadModelParts traversal
+    // No need to traverse again unless specific material overrides are needed
 
     this.scene.add(objectInfo.mesh);
   }
