@@ -111,6 +111,7 @@ export class CollectibleCreator {
         if (child.isMesh) {
           child.castShadow = true;
           child.receiveShadow = true;
+          child.geometry.center();
           // Ensure material allows shadows and looks good
           if (child.material) {
             child.material.metalness = 0.8;
